@@ -501,7 +501,6 @@ class JDWrapper(object):
             'stock' : '',
             'stockName': '',
         }
-        
         try:
             # shop page
             stock_link = 'http://item.jd.com/{0}.html'.format(stock_id)
@@ -517,16 +516,29 @@ class JDWrapper(object):
             good_data['name'] = tags_val(tags).strip(' \t\r\n')
 
             # 加入购物车按钮的链接
-            tags = soup.select('a#InitCartUrl')
-            if len(tags) == 0:
-                tags = soup.select('#btn-reservation')
-            print u'tags = '
-            print tags
-            link = tags_val(tags, key='href')
+            tags = soup.select('a#InitCartUrl')  #非抢购商品才有这个按钮
+
+            payload = {
+                'sku':stock_id
+            }
+            if len(tags) == 0:   #是抢购商品
+                yushou_url = 'https://yushou.jd.com/youshouinfo.action'
+                resp = self.sess.get(yushou_url,cookies = self.cookies,params=payload)
+                print u'预售信息：'
+                print resp.text
+                tags = resp.text
+                print u'tags = '
+                print ''+tags
+                js = json.loads(tags)
+                print js
+                link = js.get('url')
+                if link[:2] == '//': link = 'https:' + link
+            else: #不是抢购商品
+                link = tags_val(tags, key='href')
+                if link[:2] == '//': link = 'http:' + link
             print link
-            if link[:2] == '//': link = 'http:' + link
+
             good_data['link'] = link
-        
         except Exception, e:
             print 'Exp {0} : {1}'.format(FuncName(), e)
 
@@ -559,6 +571,8 @@ class JDWrapper(object):
         price = '?'
         try:
             resp = self.sess.get(url, params=payload)
+            print 'price = '
+            print resp.text
             resp_txt = resp.text.strip()
             #print resp_txt
 
@@ -588,7 +602,6 @@ class JDWrapper(object):
                 
             # retry detail
             #good_data = self.good_detail(options.good)
-            
 
         # failed 
         link = good_data['link']
@@ -598,13 +611,18 @@ class JDWrapper(object):
             return False
 
         try:
-            print u'有货楼'
+            print u'有货啦'
             # change buy count
             if options.count != 1:
+                print u'库存怎么说？'
                 link = link.replace('pcount=1', 'pcount={0}'.format(options.count))
 
             # add to cart
+            print u'加入购物车哇？'
+            print link
             resp = self.sess.get(link, cookies = self.cookies)
+            with open('index.html','w') as f:
+                f.write(resp.text)
             soup = bs4.BeautifulSoup(resp.text, "html.parser")
 
             # tag if add to cart succeed
@@ -662,7 +680,7 @@ class JDWrapper(object):
 
         return False
 
-        
+    #购物车信息
     def cart_detail(self):
         # list all goods detail in cart
         cart_url = 'https://cart.jd.com/cart.action'
@@ -673,7 +691,7 @@ class JDWrapper(object):
             resp = self.sess.get(cart_url, cookies = self.cookies)
             resp.encoding = 'utf-8'
             soup = bs4.BeautifulSoup(resp.text, "html.parser")
-            print soup.text
+            # print soup.text
             
             print '+++++++++++++++++++++++++++++++++++++++++++++++++++++++'
             print u'{0} > 购物车明细'.format(time.ctime())
@@ -712,20 +730,20 @@ class JDWrapper(object):
             # get preorder page
             rs = self.sess.get(order_url, params=payload, cookies = self.cookies)
             soup = bs4.BeautifulSoup(rs.text, "html.parser")
-
             # order summary
-            payment = tag_val(soup.find(id='sumPayPriceId'))
-            detail = soup.find(class_='fc-consignee-info')
+            payment = tag_val(soup.find(id='sumPayPriceId'))    #订单总价
+            detail = soup.find(class_='fc-consignee-info')      #送货信息
 
             if detail:
-                snd_usr = tag_val(detail.find(id='sendMobile'))
-                snd_add = tag_val(detail.find(id='sendAddr'))
+                snd_usr = tag_val(detail.find(id='sendMobile'))     #收货手机
+                snd_add = tag_val(detail.find(id='sendAddr'))       #收货地址
 
                 print u'应付款：{0}'.format(payment)
                 print snd_usr
                 print snd_add
 
             # just test, not real order
+            submit = 1
             if not submit:
                 return False
 
@@ -742,6 +760,8 @@ class JDWrapper(object):
             
             order_url = 'http://trade.jd.com/shopping/order/submitOrder.action'
             rp = self.sess.post(order_url, params=payload, cookies = self.cookies)
+            print 'rp = '
+            print rp.text
 
             if rp.status_code == 200:
                 js = json.loads(rp.text)
@@ -770,7 +790,7 @@ def main(options):
         if not jd.login_by_QR():
             return
 
-    while not jd.buy(options) and options.flush:
+    while not jd.buy(options) and options.flush2:
         time.sleep(options.wait / 1000.0)
 
 
@@ -800,14 +820,18 @@ if __name__ == '__main__':
     # example goods
     hw_watch = '2567304'
     iphone_7 = '3133851'
-    mix2s = '6949475'    #mix2s目前还是抢购商品，加入购物车的链接好像不一样
+    mix2s = '6949453'    #mix2s目前还是抢购商品，加入购物车的链接好像不一样
+    onePlue6 = '7489068'
+    fanhe = '4357905'
 
     options = parser.parse_args()
-    print options
+    options.flush = 1000
+    options.flush2 = 0
+    # print options
   
     # for test
     if options.good == '':
-        options.good = mix2s
+        options.good = fanhe
     
     '''
     if options.password == '' or options.username == '':
